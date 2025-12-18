@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "chainhook:register": "npx tsx src/scripts/register-chainhooks.ts",
-    "chainhook:status": "npx tsx src/scripts/check-status.ts"
+    "chainhook:status": "npx tsx src/scripts/check-status.ts",
+    "postinstall": "npm run build"
   },
   "dependencies": {
     "@hirosystems/chainhooks-client": "^1.0.0",
