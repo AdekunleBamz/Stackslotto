@@ -57,56 +57,27 @@ export class ChainhooksService {
       return;
     }
 
-    const hooks: Array<{ name: string; functionName?: string; endpoint: string }> = [
+    // Consolidated approach: Use ONE chainhook to catch ALL contract calls
+    // The backend will filter by function name
+    const hooks: Array<{ name: string; endpoint: string }> = [
       {
-        name: 'StacksLotto-TicketPurchase',
-        functionName: 'buy-ticket',
-        endpoint: '/ticket-purchase'
-      },
-      {
-        name: 'StacksLotto-QuickPlay',
-        functionName: 'quick-play',
-        endpoint: '/ticket-purchase'
-      },
-      {
-        name: 'StacksLotto-BulkTickets',
-        functionName: 'buy-tickets',
-        endpoint: '/bulk-tickets'
-      },
-      {
-        name: 'StacksLotto-LuckyFive',
-        functionName: 'lucky-five',
-        endpoint: '/bulk-tickets'
-      },
-      {
-        name: 'StacksLotto-PowerPlay',
-        functionName: 'power-play',
-        endpoint: '/bulk-tickets'
-      },
-      {
-        name: 'StacksLotto-MegaPlay',
-        functionName: 'mega-play',
-        endpoint: '/bulk-tickets'
-      },
-      {
-        name: 'StacksLotto-WinnerDrawn',
-        functionName: 'draw-winner',
-        endpoint: '/winner-drawn'
-      },
-      {
-        name: 'StacksLotto-LotteryPaused',
-        functionName: 'pause-lottery',
-        endpoint: '/lottery-paused'
-      },
-      {
-        name: 'StacksLotto-LotteryResumed',
-        functionName: 'resume-lottery',
-        endpoint: '/lottery-resumed'
+        name: 'StacksLotto-AllEvents',
+        endpoint: '/events'
       }
     ];
 
     for (const hook of hooks) {
       try {
+        // Check if hook already exists
+        const existingHooks = await this.client.getChainhooks();
+        const existing = existingHooks.results.find((h: any) => h.definition?.name === hook.name);
+        
+        if (existing) {
+          console.log(`[ChainhooksService] Hook ${hook.name} already exists: ${existing.uuid}`);
+          this.registeredHooks.push(existing.uuid);
+          continue;
+        }
+
         const definition: ChainhookDefinition = {
           name: hook.name,
           version: '1',
@@ -117,7 +88,7 @@ export class ChainhooksService {
               {
                 type: 'contract_call',
                 contract_identifier: LOTTO_CONTRACT,
-                function_name: hook.functionName,
+                // No function_name filter - catches ALL function calls to the contract
               }
             ]
           },
@@ -136,8 +107,12 @@ export class ChainhooksService {
         console.log(`[ChainhooksService] Registered ${hook.name}: ${result.uuid}`);
         this.registeredHooks.push(result.uuid);
         
-      } catch (error) {
-        console.error(`[ChainhooksService] Failed to register ${hook.name}:`, error);
+      } catch (error: any) {
+        if (error.body?.message?.includes('limit reached')) {
+          console.warn(`[ChainhooksService] Chainhook limit reached. You may need to delete old chainhooks first.`);
+          console.warn(`[ChainhooksService] Run: npm run chainhook:status to see existing hooks`);
+        }
+        console.error(`[ChainhooksService] Failed to register ${hook.name}:`, error.message || error);
       }
     }
   }
