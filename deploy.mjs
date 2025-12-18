@@ -51,13 +51,26 @@ async function deploy() {
   console.log('Deploying stacks-lotto contract...');
   console.log('Contract code length:', contractCode.length, 'characters');
   
+  // Check if contract already exists
+  try {
+    const checkUrl = `https://api.hiro.so/v2/contracts/SP3FKNEZ86RG5RT7SZ5FBRGH85FZNG94ZH1MCGG6N/stacks-lotto`;
+    const checkResponse = await fetch(checkUrl);
+    if (checkResponse.ok) {
+      console.log('⚠️  Contract already exists at this address!');
+      console.log('If you want to redeploy, you need to use a different contract name or address.');
+      return;
+    }
+  } catch (e) {
+    // Contract doesn't exist, proceed with deployment
+  }
+
   const txOptions = {
     contractName: 'stacks-lotto',
     codeBody: contractCode,
     senderKey: senderKey,
     network: stacksNetwork,
     anchorMode: AnchorMode.Any,
-    fee: 100000n, // 0.1 STX fee
+    fee: 500000n, // 0.5 STX fee (increased for reliability)
   };
   
   try {
@@ -81,7 +94,14 @@ async function deploy() {
     
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Broadcast failed: ${response.status} ${errorText}`);
+      let errorMsg = `Broadcast failed: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMsg += ` - ${errorJson.error || errorJson.message || errorText}`;
+      } catch {
+        errorMsg += ` - ${errorText}`;
+      }
+      throw new Error(errorMsg);
     }
     
     const result = await response.json();
@@ -89,8 +109,10 @@ async function deploy() {
     console.log('✅ Transaction broadcast!');
     console.log('TX ID:', txId);
     console.log('View on explorer: https://explorer.hiro.so/txid/' + txId + '?chain=mainnet');
-    console.log('\n📝 Update your .env files with:');
-    console.log(`LOTTO_CONTRACT=SP...your-address.stacks-lotto`);
+    console.log('\n⏳ Waiting for confirmation (takes ~10 minutes)...');
+    console.log('📝 Contract will be available at:');
+    console.log(`   SP3FKNEZ86RG5RT7SZ5FBRGH85FZNG94ZH1MCGG6N.stacks-lotto`);
+    console.log('\n💡 Check status: https://explorer.hiro.so/txid/' + txId + '?chain=mainnet');
   } catch (error) {
     console.error('❌ Deployment failed:', error.message || error);
     if (error.message?.includes('insufficient')) {
