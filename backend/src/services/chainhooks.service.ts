@@ -1,4 +1,4 @@
-import { ChainhooksClient, type ChainhookDefinition } from '@hirosystems/chainhooks-client';
+import { ChainhooksClient, CHAINHOOKS_BASE_URL, type ChainhookDefinition } from '@hirosystems/chainhooks-client';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -21,6 +21,7 @@ export class ChainhooksService {
 
   constructor() {
     this.client = new ChainhooksClient({
+      baseUrl: CHAINHOOKS_BASE_URL[STACKS_NETWORK],
       apiKey: HIRO_API_KEY,
     });
   }
