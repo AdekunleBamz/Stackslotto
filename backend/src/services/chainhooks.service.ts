@@ -151,7 +151,26 @@ export class ChainhooksService {
         );
         
         if (existing) {
-          console.log(`[ChainhooksService] Hook ${hook.name} already exists: ${existing.uuid}`);
+          const currentWebhookUrl = existing.definition?.action?.url;
+          const expectedWebhookUrl = webhookUrl(hook.endpoint);
+          
+          // Update hook if webhook URL has changed
+          if (currentWebhookUrl !== expectedWebhookUrl) {
+            console.log(`[ChainhooksService] Updating ${hook.name} webhook URL...`);
+            try {
+              await this.client.updateChainhook(existing.uuid, {
+                action: {
+                  type: 'http_post',
+                  url: expectedWebhookUrl,
+                }
+              });
+              console.log(`[ChainhooksService] Updated ${hook.name} webhook URL to ${expectedWebhookUrl}`);
+            } catch (error: any) {
+              console.error(`[ChainhooksService] Failed to update ${hook.name}:`, error.message || error);
+            }
+          } else {
+            console.log(`[ChainhooksService] Hook ${hook.name} already exists with correct URL: ${existing.uuid}`);
+          }
           this.registeredHooks.push(existing.uuid);
           continue;
         }
