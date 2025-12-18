@@ -51,30 +51,116 @@ export class ChainhooksService {
     }
   }
 
+  async deleteOldChainhooks(): Promise<number> {
+    const response = await this.client.getChainhooks();
+    const allHooks = response.results;
+    let deletedCount = 0;
+    
+    // Delete hooks that are NOT for StacksLotto
+    for (const hook of allHooks) {
+      const hookName = hook.definition?.name || '';
+      // Keep only StacksLotto hooks, delete everything else
+      if (!hookName.startsWith('StacksLotto-')) {
+        try {
+          await this.client.deleteChainhook(hook.uuid);
+          console.log(`[ChainhooksService] Deleted old hook: ${hookName} (${hook.uuid})`);
+          deletedCount++;
+        } catch (error) {
+          console.error(`[ChainhooksService] Failed to delete ${hook.uuid}:`, error);
+        }
+      }
+    }
+    
+    return deletedCount;
+  }
+
   async registerAllHooks(): Promise<void> {
     if (!LOTTO_CONTRACT) {
       console.error('[ChainhooksService] LOTTO_CONTRACT not set');
       return;
     }
 
-    // Consolidated approach: Use ONE chainhook to catch ALL contract calls
-    // The backend will filter by function name
-    const hooks: Array<{ name: string; endpoint: string }> = [
+    // Original design: 5 chainhooks as per README
+    const hooks: Array<{ name: string; functionName?: string; endpoint: string }> = [
       {
-        name: 'StacksLotto-AllEvents',
-        endpoint: '/events'
+        name: 'StacksLotto-TicketPurchase',
+        functionName: 'buy-ticket',
+        endpoint: '/ticket-purchase'
+      },
+      {
+        name: 'StacksLotto-QuickPlay',
+        functionName: 'quick-play',
+        endpoint: '/ticket-purchase'
+      },
+      {
+        name: 'StacksLotto-BulkTickets',
+        functionName: 'buy-tickets',
+        endpoint: '/bulk-tickets'
+      },
+      {
+        name: 'StacksLotto-LuckyFive',
+        functionName: 'lucky-five',
+        endpoint: '/bulk-tickets'
+      },
+      {
+        name: 'StacksLotto-PowerPlay',
+        functionName: 'power-play',
+        endpoint: '/bulk-tickets'
+      },
+      {
+        name: 'StacksLotto-MegaPlay',
+        functionName: 'mega-play',
+        endpoint: '/bulk-tickets'
+      },
+      {
+        name: 'StacksLotto-WinnerDrawn',
+        functionName: 'draw-winner',
+        endpoint: '/winner-drawn'
+      },
+      {
+        name: 'StacksLotto-LotteryPaused',
+        functionName: 'pause-lottery',
+        endpoint: '/lottery-paused'
+      },
+      {
+        name: 'StacksLotto-LotteryResumed',
+        functionName: 'resume-lottery',
+        endpoint: '/lottery-resumed'
       }
     ];
 
+    // First, delete old non-StacksLotto chainhooks to make room
+    console.log('[ChainhooksService] Cleaning up old chainhooks...');
+    const deletedCount = await this.deleteOldChainhooks();
+    if (deletedCount > 0) {
+      console.log(`[ChainhooksService] Deleted ${deletedCount} old chainhook(s)`);
+    }
+
+    // Check existing StacksLotto hooks
+    const existingHooks = await this.client.getChainhooks();
+    const existingStacksLottoHooks = existingHooks.results.filter(
+      (h: any) => h.definition?.name?.startsWith('StacksLotto-')
+    );
+
+    // Register missing hooks
     for (const hook of hooks) {
       try {
-        // Check if hook already exists
-        const existingHooks = await this.client.getChainhooks();
-        const existing = existingHooks.results.find((h: any) => h.definition?.name === hook.name);
+        // Check if this specific hook already exists
+        const existing = existingStacksLottoHooks.find(
+          (h: any) => h.definition?.name === hook.name
+        );
         
         if (existing) {
           console.log(`[ChainhooksService] Hook ${hook.name} already exists: ${existing.uuid}`);
           this.registeredHooks.push(existing.uuid);
+          continue;
+        }
+
+        // Check if we have room (limit is 10)
+        const currentCount = (await this.client.getChainhooks()).total;
+        if (currentCount >= 10) {
+          console.warn(`[ChainhooksService] Chainhook limit reached (10/10). Cannot register ${hook.name}`);
+          console.warn(`[ChainhooksService] Please delete more old chainhooks manually`);
           continue;
         }
 
@@ -88,7 +174,7 @@ export class ChainhooksService {
               {
                 type: 'contract_call',
                 contract_identifier: LOTTO_CONTRACT,
-                // No function_name filter - catches ALL function calls to the contract
+                function_name: hook.functionName,
               }
             ]
           },
@@ -109,8 +195,8 @@ export class ChainhooksService {
         
       } catch (error: any) {
         if (error.body?.message?.includes('limit reached')) {
-          console.warn(`[ChainhooksService] Chainhook limit reached. You may need to delete old chainhooks first.`);
-          console.warn(`[ChainhooksService] Run: npm run chainhook:status to see existing hooks`);
+          console.warn(`[ChainhooksService] Chainhook limit reached. Deleted ${deletedCount} old hooks, but still need more room.`);
+          console.warn(`[ChainhooksService] You may need to manually delete more chainhooks.`);
         }
         console.error(`[ChainhooksService] Failed to register ${hook.name}:`, error.message || error);
       }

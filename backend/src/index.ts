@@ -160,9 +160,9 @@ app.post('/api/chainhook/events/:eventType', authenticateWebhook, (req, res) => 
   }
 });
 
-// Generic webhook endpoint (consolidated - handles all StacksLotto events)
+// Generic webhook endpoint
 app.post('/api/chainhook/events', authenticateWebhook, (req, res) => {
-  console.log('[Server] Received consolidated StacksLotto webhook event');
+  console.log('[Server] Received generic webhook event');
   
   try {
     const payload = req.body;
@@ -170,67 +170,8 @@ app.post('/api/chainhook/events', authenticateWebhook, (req, res) => {
     
     console.log(`[Server] Hook UUID: ${hookId}`);
     
-    // Process chainhook payload
     if (payload.apply && Array.isArray(payload.apply)) {
-      payload.apply.forEach((block: any) => {
-        if (block.transactions) {
-          block.transactions.forEach((tx: any) => {
-            // Get function name from contract call
-            const functionName = tx.metadata?.kind?.data?.function_name || 
-                                tx.contract_call?.function_name;
-            
-            // Map function names to event types
-            let eventType = 'unknown';
-            if (['buy-ticket', 'quick-play'].includes(functionName)) {
-              eventType = 'ticket-purchase';
-            } else if (['buy-tickets', 'lucky-five', 'power-play', 'mega-play'].includes(functionName)) {
-              eventType = 'bulk-tickets';
-            } else if (functionName === 'draw-winner') {
-              eventType = 'winner-drawn';
-            } else if (functionName === 'pause-lottery') {
-              eventType = 'lottery-paused';
-            } else if (functionName === 'resume-lottery') {
-              eventType = 'lottery-resumed';
-            }
-            
-            if (eventType !== 'unknown') {
-              // Extract event data from transaction
-              const event: LottoEvent = {
-                id: `${tx.transaction_identifier?.hash || Date.now()}-${events.length}`,
-                type: eventType,
-                timestamp: new Date().toISOString(),
-                txId: tx.transaction_identifier?.hash,
-                blockHeight: block.block_identifier?.index
-              };
-              
-              // Parse print events for lottery data
-              if (tx.metadata?.receipt?.events) {
-                tx.metadata.receipt.events.forEach((e: any) => {
-                  if (e.type === 'SmartContractEvent' || e.type === 'print_event') {
-                    const data = e.data?.value || e.contract_event?.value;
-                    if (data) {
-                      if (data.player) event.player = data.player;
-                      if (data.round) event.round = data.round;
-                      if (data.amount) event.tickets = data.amount;
-                      if (data.winner) event.winner = data.winner;
-                      if (data.prize || data['winner-prize']) event.prize = data.prize || data['winner-prize'];
-                    }
-                  }
-                });
-              }
-              
-              events.unshift(event);
-              broadcast({ type: 'new-event', event });
-              console.log(`[Server] Processed ${eventType} event from ${functionName}`);
-            }
-          });
-        }
-      });
-    }
-    
-    // Keep events list bounded
-    while (events.length > MAX_EVENTS) {
-      events.pop();
+      console.log(`[Server] Processing ${payload.apply.length} blocks`);
     }
     
     res.json({ success: true });
