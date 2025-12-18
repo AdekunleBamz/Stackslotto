@@ -16,10 +16,10 @@ async function main() {
     console.log(`\nTotal Chainhooks: ${hooks.length}\n`);
     
     hooks.forEach((hook: any, index: number) => {
-      console.log(`${index + 1}. ${hook.name || 'Unnamed'}`);
+      console.log(`${index + 1}. ${hook.definition?.name || 'Unnamed'}`);
       console.log(`   UUID: ${hook.uuid}`);
       console.log(`   Enabled: ${hook.status?.enabled || false}`);
-      console.log(`   Status: ${hook.status?.info || 'unknown'}`);
+      console.log(`   Status: ${hook.status?.status || 'unknown'}`);
       console.log('');
     });
     

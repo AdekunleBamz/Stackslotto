@@ -1,4 +1,4 @@
-import { ChainhooksClient, EventObserverOptions } from '@hirosystems/chainhooks-client';
+import { ChainhooksClient, type ChainhookDefinition } from '@hirosystems/chainhooks-client';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -6,14 +6,13 @@ dotenv.config();
 const HIRO_API_KEY = process.env.HIRO_API_KEY || '';
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:3001/api/chainhook/events';
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
-const STACKS_NETWORK = process.env.STACKS_NETWORK || 'mainnet';
+const STACKS_NETWORK = (process.env.STACKS_NETWORK || 'mainnet') as 'mainnet' | 'testnet';
 const LOTTO_CONTRACT = process.env.LOTTO_CONTRACT || '';
 
 function webhookUrl(path: string): string {
   const base = WEBHOOK_URL.replace(/\/+$/, '');
   const p = path.startsWith('/') ? path : '/' + path;
-  const url = base + p;
-  return WEBHOOK_SECRET ? `${url}?token=${encodeURIComponent(WEBHOOK_SECRET)}` : url;
+  return base + p;
 }
 
 export class ChainhooksService {
@@ -28,15 +27,20 @@ export class ChainhooksService {
 
   async initialize(): Promise<void> {
     try {
-      const status = await this.client.getApiStatus();
-      console.log(`[ChainhooksService] API Status: ${status.status}`);
-      console.log(`[ChainhooksService] Server Version: ${status.server_version}`);
+      // Get API status
+      try {
+        const status = await this.client.getStatus();
+        console.log(`[ChainhooksService] API Status: ${status.status}`);
+        console.log(`[ChainhooksService] Server Version: ${status.server_version}`);
+      } catch (e) {
+        console.log('[ChainhooksService] Could not get API status');
+      }
       
       // List existing hooks
-      const hooks = await this.client.listChainhooks();
-      console.log(`[ChainhooksService] Found ${hooks.length} chainhooks`);
+      const response = await this.client.getChainhooks();
+      console.log(`[ChainhooksService] Found ${response.total} chainhooks`);
       
-      hooks.forEach((hook: any) => {
+      response.results.forEach((hook) => {
         this.registeredHooks.push(hook.uuid);
       });
       
@@ -52,68 +56,84 @@ export class ChainhooksService {
       return;
     }
 
-    const [contractAddress, contractName] = LOTTO_CONTRACT.split('.');
-    
-    const hooks = [
+    const hooks: Array<{ name: string; functionName?: string; endpoint: string }> = [
       {
         name: 'StacksLotto-TicketPurchase',
-        filter: 'ticket-purchased',
+        functionName: 'buy-ticket',
+        endpoint: '/ticket-purchase'
+      },
+      {
+        name: 'StacksLotto-QuickPlay',
+        functionName: 'quick-play',
         endpoint: '/ticket-purchase'
       },
       {
         name: 'StacksLotto-BulkTickets',
-        filter: 'tickets-purchased',
+        functionName: 'buy-tickets',
+        endpoint: '/bulk-tickets'
+      },
+      {
+        name: 'StacksLotto-LuckyFive',
+        functionName: 'lucky-five',
+        endpoint: '/bulk-tickets'
+      },
+      {
+        name: 'StacksLotto-PowerPlay',
+        functionName: 'power-play',
+        endpoint: '/bulk-tickets'
+      },
+      {
+        name: 'StacksLotto-MegaPlay',
+        functionName: 'mega-play',
         endpoint: '/bulk-tickets'
       },
       {
         name: 'StacksLotto-WinnerDrawn',
-        filter: 'winner-drawn',
+        functionName: 'draw-winner',
         endpoint: '/winner-drawn'
       },
       {
         name: 'StacksLotto-LotteryPaused',
-        filter: 'lottery-paused',
+        functionName: 'pause-lottery',
         endpoint: '/lottery-paused'
       },
       {
         name: 'StacksLotto-LotteryResumed',
-        filter: 'lottery-resumed',
+        functionName: 'resume-lottery',
         endpoint: '/lottery-resumed'
       }
     ];
 
     for (const hook of hooks) {
       try {
-        const result = await this.client.createChainhook({
+        const definition: ChainhookDefinition = {
           name: hook.name,
-          version: '1.0.0',
+          version: '1',
           chain: 'stacks',
-          networks: {
-            [STACKS_NETWORK]: {
-              if_this: {
-                scope: 'contract_call',
+          network: STACKS_NETWORK,
+          filters: {
+            events: [
+              {
+                type: 'contract_call',
                 contract_identifier: LOTTO_CONTRACT,
-                method: '*'
-              },
-              then_that: {
-                http_post: {
-                  url: webhookUrl(hook.endpoint),
-                  authorization_header: WEBHOOK_SECRET ? `Bearer ${WEBHOOK_SECRET}` : undefined
-                }
-              },
-              start_block: STACKS_NETWORK === 'mainnet' ? 170000 : 1,
-              expire_after_occurrence: null,
-              decode_clarity_values: true
-            }
+                function_name: hook.functionName,
+              }
+            ]
+          },
+          action: {
+            type: 'http_post',
+            url: webhookUrl(hook.endpoint),
+          },
+          options: {
+            decode_clarity_values: true,
+            enable_on_registration: true,
           }
-        });
+        };
+
+        const result = await this.client.registerChainhook(definition);
         
         console.log(`[ChainhooksService] Registered ${hook.name}: ${result.uuid}`);
         this.registeredHooks.push(result.uuid);
-        
-        // Enable the hook
-        await this.client.toggleChainhook(result.uuid, true);
-        console.log(`[ChainhooksService] Enabled ${hook.name}`);
         
       } catch (error) {
         console.error(`[ChainhooksService] Failed to register ${hook.name}:`, error);
@@ -122,12 +142,13 @@ export class ChainhooksService {
   }
 
   async listHooks(): Promise<any[]> {
-    return await this.client.listChainhooks();
+    const response = await this.client.getChainhooks();
+    return response.results;
   }
 
   async deleteAllHooks(): Promise<void> {
-    const hooks = await this.client.listChainhooks();
-    for (const hook of hooks) {
+    const response = await this.client.getChainhooks();
+    for (const hook of response.results) {
       try {
         await this.client.deleteChainhook(hook.uuid);
         console.log(`[ChainhooksService] Deleted hook: ${hook.uuid}`);
