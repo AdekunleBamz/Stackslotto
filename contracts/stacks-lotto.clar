@@ -145,8 +145,8 @@
         ;; Check lottery is active
         (asserts! (var-get lottery-active) err-lottery-not-active)
         
-        ;; Transfer STX to contract
-        (try! (stx-transfer? ticket-price tx-sender (as-contract tx-sender)))
+        ;; Transfer STX to contract (Clarity 4: use as-contract?)
+        (try! (stx-transfer? ticket-price tx-sender (as-contract? tx-sender)))
         
         ;; Update ticket tracking
         (map-set ticket-owners { round: round, ticket-number: new-ticket-number } tx-sender)
@@ -187,8 +187,8 @@
         (asserts! (> amount u0) err-invalid-amount)
         (asserts! (<= amount u100) err-invalid-amount) ;; Max 100 tickets per tx
         
-        ;; Transfer STX
-        (try! (stx-transfer? total-cost tx-sender (as-contract tx-sender)))
+        ;; Transfer STX to contract (Clarity 4: use as-contract?)
+        (try! (stx-transfer? total-cost tx-sender (as-contract? tx-sender)))
         
         ;; Update player tickets
         (map-set player-tickets { player: tx-sender, round: round } (+ player-current-tickets amount))
@@ -237,11 +237,11 @@
         ;; Deactivate lottery during draw
         (var-set lottery-active false)
         
-        ;; Transfer owner fee
-        (try! (as-contract (stx-transfer? owner-fee tx-sender contract-owner)))
+        ;; Transfer owner fee (from contract - Clarity 4: use as-contract?)
+        (try! (as-contract? (stx-transfer? owner-fee tx-sender contract-owner)))
         
-        ;; Transfer prize to winner
-        (try! (as-contract (stx-transfer? winner-prize tx-sender winner)))
+        ;; Transfer prize to winner (from contract - Clarity 4: use as-contract?)
+        (try! (as-contract? (stx-transfer? winner-prize tx-sender winner)))
         
         ;; Update winner stats
         (update-winner-stats winner winner-prize)
