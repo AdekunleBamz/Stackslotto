@@ -3,6 +3,17 @@ dist/
 .next/
 .env
 .env.local
+.env.*.local
 *.log
 .cache/
 .DS_Store
+
+# Wallet and secrets
+*.key
+*.pem
+*.secret
+secrets/
+wallet.json
+mnemonic.txt
+.secrets
+*.mnemonic
