@@ -8,5 +8,5 @@ requirements = []
 
 [contracts.stacks-lotto]
 path = "contracts/stacks-lotto.clar"
-clarity_version = 2
+clarity_version = 4
 epoch = 2.5
